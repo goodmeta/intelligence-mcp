@@ -491,13 +491,113 @@ async function main() {
     });
 
     app.get("/health", (c) => c.json({ ok: true, mode: "http", x402: !!X402_PAY_TO }));
-    app.get("/", (c) => c.json({
+    app.get("/api/info", (c) => c.json({
       name: "Intelligence MCP Server",
       version: "0.1.0",
       endpoint: "/mcp",
       tools: ["scan_opportunities", "get_protocol_info", "compare_protocols"],
       x402: X402_PAY_TO ? { enabled: true, price: SCAN_PRICE, network: X402_NETWORK } : { enabled: false },
     }));
+    app.get("/", (c) => {
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intel — Agent Payments Intelligence</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e2e8f0; line-height: 1.7; }
+    .container { max-width: 720px; margin: 0 auto; padding: 80px 24px; }
+    h1 { font-size: 2.2em; font-weight: 700; letter-spacing: -1px; color: #f8fafc; margin-bottom: 8px; }
+    .subtitle { color: #64748b; font-size: 1.1em; margin-bottom: 48px; }
+    .badge { display: inline-block; background: #1e293b; color: #3b82f6; padding: 3px 10px; border-radius: 4px; font-size: 0.8em; font-weight: 600; margin-bottom: 24px; letter-spacing: 0.5px; }
+    h2 { font-size: 1.1em; color: #94a3b8; margin-top: 48px; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px; font-weight: 500; }
+    .tool { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 12px; }
+    .tool-name { font-family: ui-monospace, monospace; color: #3b82f6; font-weight: 600; font-size: 0.95em; }
+    .tool-price { float: right; color: #22c55e; font-size: 0.85em; }
+    .tool-desc { color: #94a3b8; font-size: 0.9em; margin-top: 6px; }
+    pre { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 20px; overflow-x: auto; font-size: 0.85em; line-height: 1.6; margin-bottom: 12px; }
+    code { font-family: ui-monospace, monospace; }
+    .comment { color: #475569; }
+    .string { color: #22c55e; }
+    .key { color: #3b82f6; }
+    a { color: #3b82f6; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #1e293b; color: #475569; font-size: 0.85em; }
+    .protocols { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+    .protocols span { background: #1e293b; padding: 4px 12px; border-radius: 4px; font-size: 0.8em; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">MCP SERVER</div>
+    <h1>Agent Payments Intelligence</h1>
+    <p class="subtitle">AI agents scanning the agent payments ecosystem. GitHub, Hacker News, npm. Classified, scored, actionable.</p>
+
+    <div class="protocols">
+      <span>AP2</span><span>ACP</span><span>x402</span><span>MPP</span><span>UCP</span><span>MCP</span>
+    </div>
+
+    <h2>Tools</h2>
+
+    <div class="tool">
+      <span class="tool-name">scan_opportunities</span>
+      <span class="tool-price">${X402_PAY_TO ? "$0.01 USDC" : "free"}</span>
+      <p class="tool-desc">Scan GitHub, HN, npm for new repos, issues, packages, and funding signals in the agent payments ecosystem. Returns scored and classified opportunities with recommended actions.</p>
+    </div>
+
+    <div class="tool">
+      <span class="tool-name">get_protocol_info</span>
+      <span class="tool-price">free</span>
+      <p class="tool-desc">Get details on any of the five agent payment protocols: AP2, ACP, x402, MPP, or UCP.</p>
+    </div>
+
+    <div class="tool">
+      <span class="tool-name">compare_protocols</span>
+      <span class="tool-price">free</span>
+      <p class="tool-desc">Full comparison matrix across all five protocols. Authorization, settlement, commerce layers.</p>
+    </div>
+
+    <h2>Connect</h2>
+
+    <pre><code><span class="comment">// Claude Code / Cursor — add to MCP config:</span>
+{
+  <span class="key">"mcpServers"</span>: {
+    <span class="key">"intelligence"</span>: {
+      <span class="key">"type"</span>: <span class="string">"url"</span>,
+      <span class="key">"url"</span>: <span class="string">"https://intel.goodmeta.co/mcp"</span>
+    }
+  }
+}</code></pre>
+
+    <pre><code><span class="comment"># Then ask your agent:</span>
+"Scan for agent payment opportunities from the last 7 days"
+"Compare AP2 vs MPP vs x402"
+"Tell me about the UCP protocol"</code></pre>
+
+    <h2>Try It</h2>
+
+    <pre><code><span class="comment"># List available tools</span>
+curl -X POST https://intel.goodmeta.co/mcp \\
+  -H "Content-Type: application/json" \\
+  -H "Accept: application/json, text/event-stream" \\
+  -H "MCP-Protocol-Version: 2025-06-18" \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"curl","version":"1.0"},"capabilities":{}}}'</code></pre>
+
+    <div class="footer">
+      <p>Built by <a href="https://linkedin.com/in/tsangeric">Eric Tsang</a> / <a href="https://goodmeta.co">Good Meta</a></p>
+      <p style="margin-top: 8px;">
+        <a href="https://github.com/goodmeta/intelligence-mcp">GitHub</a> ·
+        <a href="https://github.com/goodmeta/agent-payments-landscape">Protocol Comparison</a> ·
+        <a href="https://linkedin.com/in/tsangeric">Agent Payments Weekly</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+      return c.html(html);
+    });
 
     serve({ fetch: app.fetch, port: PORT });
     console.error(`Intelligence MCP server running on http://localhost:${PORT}/mcp`);
