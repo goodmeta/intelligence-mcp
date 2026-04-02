@@ -55,7 +55,7 @@ interface Signal {
 const GITHUB_PAT = process.env.GITHUB_PAT || "";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const X402_PAY_TO = process.env.X402_PAY_TO || "";
-const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
+const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://x402.goodmeta.co";
 const X402_NETWORK = "eip155:8453"; // Base mainnet
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const SCAN_PRICE = "$0.01";
