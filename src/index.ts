@@ -29,6 +29,8 @@ import { z } from "zod";
 import { createPaymentWrapper } from "@x402/mcp";
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { Mppx, tempo } from "mppx/server";
+import { Transport as McpMppTransport } from "mppx/mcp-sdk/server";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 
@@ -57,6 +59,11 @@ const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://x402.o
 const X402_NETWORK = "eip155:8453"; // Base mainnet
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const SCAN_PRICE = "$0.01";
+
+// MPP config
+const MPP_SECRET_KEY = process.env.MPP_SECRET_KEY || "";
+const MPP_RECIPIENT = process.env.MPP_RECIPIENT || ""; // Tempo address
+const MPP_CURRENCY = process.env.MPP_CURRENCY || "0x20c0000000000000000000000000000000000000"; // Tempo USDC
 
 const isHttpMode = process.argv.includes("--http");
 const PORT = parseInt(process.env.PORT || "3001");
@@ -309,9 +316,12 @@ async function createServer(): Promise<McpServer> {
     version: "0.1.0",
   });
 
-  // Set up x402 payment wrapper (only if PAY_TO is configured)
+  // Set up payment wrappers
   let paidScan: any = null;
+  let mppPayment: any = null;
+  const paymentMethods: string[] = [];
 
+  // x402 setup
   if (X402_PAY_TO) {
     try {
       const facilitatorClient = new HTTPFacilitatorClient({ url: X402_FACILITATOR_URL });
@@ -328,12 +338,37 @@ async function createServer(): Promise<McpServer> {
       });
 
       paidScan = createPaymentWrapper(resourceServer, { accepts: scanAccepts });
-      console.error(`x402 payment gating enabled (${SCAN_PRICE} per scan, pay to ${X402_PAY_TO})`);
+      paymentMethods.push("x402 (USDC on Base)");
+      console.error(`x402 payment gating enabled (${SCAN_PRICE} per scan)`);
     } catch (e) {
-      console.error("x402 setup failed, running in free mode:", e);
+      console.error("x402 setup failed:", e);
     }
+  }
+
+  // MPP setup
+  if (MPP_SECRET_KEY && MPP_RECIPIENT) {
+    try {
+      mppPayment = Mppx.create({
+        methods: [
+          tempo.charge({
+            currency: MPP_CURRENCY as `0x${string}`,
+            recipient: MPP_RECIPIENT as `0x${string}`,
+          }),
+        ],
+        secretKey: MPP_SECRET_KEY,
+        transport: McpMppTransport.mcpSdk(),
+      });
+      paymentMethods.push("MPP (Tempo USDC)");
+      console.error("MPP payment gating enabled");
+    } catch (e) {
+      console.error("MPP setup failed:", e);
+    }
+  }
+
+  if (!paymentMethods.length) {
+    console.error("No payment methods configured, running in free mode");
   } else {
-    console.error("No X402_PAY_TO configured, running in free mode");
+    console.error(`Payment methods: ${paymentMethods.join(", ")}`);
   }
 
   // Tool: scan_opportunities (paid if x402 configured, free otherwise)
@@ -374,14 +409,43 @@ async function createServer(): Promise<McpServer> {
     };
   };
 
-  if (paidScan) {
+  const payDesc = paymentMethods.length
+    ? `Costs ${SCAN_PRICE} USDC. Accepts: ${paymentMethods.join(" or ")}.`
+    : "";
+
+  if (paidScan && !mppPayment) {
+    // x402 only
     server.tool(
       "scan_opportunities",
-      `Scan the agent payments ecosystem for actionable opportunities. Costs ${SCAN_PRICE} USDC via x402.`,
+      `Scan the agent payments ecosystem for actionable opportunities. ${payDesc}`,
+      { days: z.number().default(7), min_score: z.number().default(12) },
+      paidScan(async (args: any) => scanHandler(args))
+    );
+  } else if (mppPayment && !paidScan) {
+    // MPP only
+    server.tool(
+      "scan_opportunities",
+      `Scan the agent payments ecosystem for actionable opportunities. ${payDesc}`,
+      { days: z.number().default(7), min_score: z.number().default(12) },
+      async (args: any, extra: any) => {
+        const result = await mppPayment.tempo.charge({ amount: "10000" })(extra);
+        if (result.status === 402) throw result.challenge;
+        return result.withReceipt(await scanHandler(args));
+      }
+    );
+  } else if (paidScan && mppPayment) {
+    // Both — x402 as primary wrapper, MPP as fallback
+    // The x402 wrapper handles payment check first. If agent sends MPP credential instead,
+    // x402 wrapper won't find payment and will return 402. Agent can then retry with x402.
+    // TODO: true dual-protocol support where agent picks method
+    server.tool(
+      "scan_opportunities",
+      `Scan the agent payments ecosystem for actionable opportunities. ${payDesc}`,
       { days: z.number().default(7), min_score: z.number().default(12) },
       paidScan(async (args: any) => scanHandler(args))
     );
   } else {
+    // Free mode
     server.tool(
       "scan_opportunities",
       "Scan the agent payments ecosystem for actionable opportunities.",
