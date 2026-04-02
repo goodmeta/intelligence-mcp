@@ -453,7 +453,12 @@ async function main() {
         }
 
         if (c.req.method === "GET") {
-          return new Response("No session", { status: 400 });
+          // Browser visitor gets redirected to landing page
+          const accept = c.req.header("accept") || "";
+          if (accept.includes("text/html")) {
+            return c.redirect("/");
+          }
+          return new Response("No session. This is the MCP endpoint — connect via an MCP client. See https://intel.goodmeta.co for setup instructions.", { status: 400 });
         }
 
         // New session (POST only)
