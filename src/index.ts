@@ -310,13 +310,17 @@ function sleep(ms: number): Promise<void> {
 // MCP Server Setup
 // ---------------------------------------------------------------------------
 
-async function createServer(): Promise<McpServer> {
-  const server = new McpServer({
-    name: "intelligence",
-    version: "0.1.0",
-  });
+// ---------------------------------------------------------------------------
+// Payment config — initialized once at startup, shared across sessions
+// ---------------------------------------------------------------------------
 
-  // Set up payment wrappers
+interface PaymentConfig {
+  paidScan: any;
+  mppPayment: any;
+  paymentMethods: string[];
+}
+
+async function initPayments(): Promise<PaymentConfig> {
   let paidScan: any = null;
   let mppPayment: any = null;
   const paymentMethods: string[] = [];
@@ -370,6 +374,21 @@ async function createServer(): Promise<McpServer> {
   } else {
     console.error(`Payment methods: ${paymentMethods.join(", ")}`);
   }
+
+  return { paidScan, mppPayment, paymentMethods };
+}
+
+// ---------------------------------------------------------------------------
+// MCP Server Factory — creates a new instance per session
+// ---------------------------------------------------------------------------
+
+function createServer(payments: PaymentConfig): McpServer {
+  const server = new McpServer({
+    name: "intelligence",
+    version: "0.1.1",
+  });
+
+  const { paidScan, mppPayment, paymentMethods } = payments;
 
   // Tool: scan_opportunities (paid if x402 configured, free otherwise)
   const scanHandler = async (args: { days: number; min_score: number }) => {
@@ -499,12 +518,12 @@ Full comparison: https://github.com/goodmeta/agent-payments-landscape`;
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const server = await createServer();
+  const payments = await initPayments();
 
   if (isHttpMode) {
     // Streamable HTTP transport via Hono
     const app = new Hono();
-    const sessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
+    const sessions = new Map<string, { transport: WebStandardStreamableHTTPServerTransport; server: McpServer }>();
 
     app.all("/mcp", async (c) => {
       const sessionId = c.req.header("mcp-session-id");
@@ -512,7 +531,7 @@ async function main() {
       if (c.req.method === "GET" || c.req.method === "POST") {
         // Check for existing session
         if (sessionId && sessions.has(sessionId)) {
-          const transport = sessions.get(sessionId)!;
+          const { transport } = sessions.get(sessionId)!;
           return transport.handleRequest(c.req.raw);
         }
 
@@ -525,7 +544,8 @@ async function main() {
           return new Response("No session. This is the MCP endpoint — connect via an MCP client. See https://intel.goodmeta.co for setup instructions.", { status: 400 });
         }
 
-        // New session (POST only)
+        // New session (POST only) — each session gets its own McpServer instance
+        const server = createServer(payments);
         const transport = new WebStandardStreamableHTTPServerTransport({
           sessionIdGenerator: () => crypto.randomUUID(),
         });
@@ -541,7 +561,7 @@ async function main() {
         // Store session
         const newSessionId = response.headers.get("mcp-session-id");
         if (newSessionId) {
-          sessions.set(newSessionId, transport);
+          sessions.set(newSessionId, { transport, server });
         }
 
         return response;
@@ -549,7 +569,7 @@ async function main() {
 
       if (c.req.method === "DELETE") {
         if (sessionId && sessions.has(sessionId)) {
-          const transport = sessions.get(sessionId)!;
+          const { transport } = sessions.get(sessionId)!;
           await transport.close();
           sessions.delete(sessionId);
         }
@@ -672,6 +692,7 @@ curl -X POST https://intel.goodmeta.co/mcp \\
     console.error(`Intelligence MCP server running on http://localhost:${PORT}/mcp`);
   } else {
     // Stdio transport (local testing)
+    const server = createServer(payments);
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("Intelligence MCP server running (stdio)");
