@@ -1,6 +1,6 @@
 {
   "name": "@goodmeta/intelligence-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for agent payments ecosystem intelligence. Pay per query via x402.",
   "type": "module",
   "bin": {
@@ -13,9 +13,16 @@
   },
   "keywords": [
     "mcp",
-    "x402",
+    "mcp-server",
+    "model-context-protocol",
     "agent-payments",
-    "intelligence"
+    "agentic-commerce",
+    "x402",
+    "ap2",
+    "mpp",
+    "intelligence",
+    "ai-agent",
+    "payment-verification"
   ],
   "author": "Eric Tsang <eric@goodmeta.co>",
   "license": "MIT",
