@@ -4,11 +4,11 @@ MCP server that gives AI agents access to agent payments ecosystem intelligence.
 
 ## Tools
 
-| Tool | What it does |
-|------|-------------|
-| `scan_opportunities` | Scan ecosystem for new repos, issues, packages, and discussions. Returns scored and classified opportunities. |
-| `get_protocol_info` | Get details on AP2, ACP, x402, MPP, or UCP. |
-| `compare_protocols` | Full comparison matrix across all five protocols. |
+| Tool | Description | Cost |
+|------|-------------|------|
+| `scan_opportunities` | Scan GitHub, HN, and npm for new repos, packages, and discussions across AP2, ACP, x402, MPP, and UCP. Returns AI-classified and scored opportunities. Use when asking about recent activity or new developments in agent payments. | $0.01 USDC |
+| `get_protocol_info` | Get the canonical description of a specific agent payment protocol including creator, maturity, repo URL, and layer (authorization, commerce, or settlement). Use when asking about a specific protocol. | Free |
+| `compare_protocols` | Side-by-side comparison matrix of all five protocols across creator, layer, agent delegation, budget limits, cross-merchant coordination, and MCP integration. Use when comparing protocols. | Free |
 
 ## Install
 

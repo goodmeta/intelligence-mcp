@@ -385,7 +385,13 @@ async function initPayments(): Promise<PaymentConfig> {
 function createServer(payments: PaymentConfig): McpServer {
   const server = new McpServer({
     name: "intelligence",
-    version: "0.1.1",
+    title: "Good Meta Intelligence",
+    description: "Agent payments ecosystem intelligence. Scans GitHub, Hacker News, and npm for activity across AP2, ACP, x402, MPP, and UCP. Returns scored and classified opportunities. Use to research agent payment protocols, compare them, or find new developments in the space.",
+    version: "0.1.5",
+    websiteUrl: "https://intel.goodmeta.co",
+    icons: [
+      { src: "https://goodmeta.co/images/gm-logo-1024.png", mimeType: "image/png", sizes: ["1024x1024"] },
+    ],
   });
 
   const { paidScan, mppPayment, paymentMethods } = payments;
@@ -432,52 +438,60 @@ function createServer(payments: PaymentConfig): McpServer {
     ? `Costs ${SCAN_PRICE} USDC. Accepts: ${paymentMethods.join(" or ")}.`
     : "";
 
+  // Build the scan handler callback based on payment configuration
+  let scanCallback: any;
   if (paidScan && !mppPayment) {
-    // x402 only
-    server.tool(
-      "scan_opportunities",
-      `Scan the agent payments ecosystem for actionable opportunities. ${payDesc}`,
-      { days: z.number().default(7), min_score: z.number().default(12) },
-      paidScan(async (args: any) => scanHandler(args))
-    );
+    scanCallback = paidScan(async (args: any) => scanHandler(args));
   } else if (mppPayment && !paidScan) {
-    // MPP only
-    server.tool(
-      "scan_opportunities",
-      `Scan the agent payments ecosystem for actionable opportunities. ${payDesc}`,
-      { days: z.number().default(7), min_score: z.number().default(12) },
-      async (args: any, extra: any) => {
-        const result = await mppPayment.tempo.charge({ amount: "10000" })(extra);
-        if (result.status === 402) throw result.challenge;
-        return result.withReceipt(await scanHandler(args));
-      }
-    );
+    scanCallback = async (args: any, extra: any) => {
+      const result = await mppPayment.tempo.charge({ amount: "10000" })(extra);
+      if (result.status === 402) throw result.challenge;
+      return result.withReceipt(await scanHandler(args));
+    };
   } else if (paidScan && mppPayment) {
-    // Both — x402 as primary wrapper, MPP as fallback
-    // The x402 wrapper handles payment check first. If agent sends MPP credential instead,
-    // x402 wrapper won't find payment and will return 402. Agent can then retry with x402.
-    // TODO: true dual-protocol support where agent picks method
-    server.tool(
-      "scan_opportunities",
-      `Scan the agent payments ecosystem for actionable opportunities. ${payDesc}`,
-      { days: z.number().default(7), min_score: z.number().default(12) },
-      paidScan(async (args: any) => scanHandler(args))
-    );
+    // Both — x402 as primary wrapper. Agent sending MPP credential will get 402, retry with x402.
+    scanCallback = paidScan(async (args: any) => scanHandler(args));
   } else {
-    // Free mode
-    server.tool(
-      "scan_opportunities",
-      "Scan the agent payments ecosystem for actionable opportunities.",
-      { days: z.number().default(7), min_score: z.number().default(12) },
-      async (args: any) => scanHandler(args)
-    );
+    scanCallback = async (args: any) => scanHandler(args);
   }
 
+  server.registerTool(
+    "scan_opportunities",
+    {
+      title: "Scan Agent Payments Ecosystem",
+      description: paymentMethods.length
+        ? `Scan GitHub, Hacker News, and npm for new repos, packages, and discussions in the agent payments ecosystem (AP2, ACP, x402, MPP, UCP). Returns AI-classified and scored opportunities with recommended actions. Use when the user asks about recent activity, new developments, or opportunities in agent payments ('what's new in agent payments?', 'any new x402 repos?', 'scan for opportunities'). Use get_protocol_info instead for static protocol details, or compare_protocols for side-by-side comparison. ${payDesc}`
+        : "Scan GitHub, Hacker News, and npm for new repos, packages, and discussions in the agent payments ecosystem (AP2, ACP, x402, MPP, UCP). Returns AI-classified and scored opportunities with recommended actions. Use when the user asks about recent activity, new developments, or opportunities in agent payments ('what's new in agent payments?', 'any new x402 repos?', 'scan for opportunities'). Use get_protocol_info instead for static protocol details, or compare_protocols for side-by-side comparison.",
+      inputSchema: {
+        days: z.number().default(7).describe("Look-back window in days (e.g., 7 for last week, 30 for last month). Default 7."),
+        min_score: z.number().default(12).describe("Minimum opportunity score out of 20 (e.g., 12 for high-quality only, 8 for broader results). Default 12."),
+      },
+      annotations: {
+        title: "Scan Agent Payments Ecosystem",
+        readOnlyHint: true,
+        openWorldHint: true,
+        idempotentHint: false,
+      },
+    },
+    scanCallback,
+  );
+
   // Tool: get_protocol_info (always free)
-  server.tool(
+  server.registerTool(
     "get_protocol_info",
-    "Get details about a specific agent payment protocol.",
-    { protocol: z.enum(["ap2", "acp", "x402", "mpp", "ucp"]) },
+    {
+      title: "Get Protocol Info",
+      description: "Get the canonical description of an agent payment protocol including creator, maturity level, repo URL, and what layer it operates at (authorization, commerce, or settlement). Use when the user asks about a specific protocol ('what is AP2?', 'who created MPP?', 'is x402 production ready?', 'what layer does ACP operate at?'). Use compare_protocols instead when comparing multiple protocols against each other.",
+      inputSchema: {
+        protocol: z.enum(["ap2", "acp", "x402", "mpp", "ucp"]).describe("Protocol identifier (e.g., 'ap2' for Google's authorization layer, 'x402' for Coinbase's settlement layer)."),
+      },
+      annotations: {
+        title: "Get Protocol Info",
+        readOnlyHint: true,
+        openWorldHint: false,
+        idempotentHint: true,
+      },
+    },
     async ({ protocol }) => {
       const p = PROTOCOL_DATA[protocol];
       const text = [
@@ -485,14 +499,23 @@ function createServer(payments: PaymentConfig): McpServer {
         `**Maturity:** ${p.maturity}`, `**Repo:** ${p.repo}`, "", p.description,
       ].join("\n");
       return { content: [{ type: "text" as const, text }] };
-    }
+    },
   );
 
   // Tool: compare_protocols (always free)
-  server.tool(
+  server.registerTool(
     "compare_protocols",
-    "Compare agent payment protocols across key dimensions.",
-    {},
+    {
+      title: "Compare Protocols",
+      description: "Get a side-by-side comparison matrix of all five agent payment protocols (AP2, ACP, x402, MPP, UCP) across creator, layer, agent delegation, budget limits, cross-merchant coordination, and MCP integration. Use when the user asks to compare protocols ('AP2 vs ACP', 'which protocol handles budgets?', 'what's the difference between x402 and MPP?', 'show me the landscape'). Use get_protocol_info instead for deep details on a single protocol.",
+      inputSchema: {},
+      annotations: {
+        title: "Compare Protocols",
+        readOnlyHint: true,
+        openWorldHint: false,
+        idempotentHint: true,
+      },
+    },
     async () => {
       const matrix = `| Dimension | AP2 | ACP | x402 | MPP | UCP |
 |-----------|-----|-----|------|-----|-----|
@@ -507,7 +530,52 @@ The gap nobody fills: cross-protocol budget tracking.
 
 Full comparison: https://github.com/goodmeta/agent-payments-landscape`;
       return { content: [{ type: "text" as const, text: matrix }] };
-    }
+    },
+  );
+
+  // Prompt: agent-payments-briefing — guides the agent on how to use this server effectively
+  server.registerPrompt(
+    "agent_payments_briefing",
+    {
+      title: "Agent Payments Briefing",
+      description: "Walk an LLM through how to research the agent payments ecosystem using this server's tools.",
+      argsSchema: {
+        focus: z.string().optional().describe("Optional protocol to focus on (ap2, acp, x402, mpp, ucp)."),
+      },
+    },
+    ({ focus }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: focus
+              ? `Use the get_protocol_info tool with protocol=${focus} to get the canonical description, then call compare_protocols to see how it relates to the others. If you need fresh activity, call scan_opportunities (paid: $0.01 USDC via x402).`
+              : `Start with compare_protocols to see the landscape. Then use get_protocol_info on any specific protocol you want to dig into. For fresh activity from GitHub/HN/npm, call scan_opportunities (paid: $0.01 USDC via x402).`,
+          },
+        },
+      ],
+    }),
+  );
+
+  // Resource: ecosystem-overview — static reference to the comparison matrix repo
+  server.registerResource(
+    "ecosystem-overview",
+    "https://github.com/goodmeta/agent-payments-landscape",
+    {
+      title: "Agent Payments Landscape",
+      description: "Living comparison matrix of AP2, ACP, x402, MPP, and UCP. Source repo for this server's protocol data.",
+      mimeType: "text/markdown",
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/markdown",
+          text: "Reference: https://github.com/goodmeta/agent-payments-landscape\n\nFor structured access, call the compare_protocols tool.",
+        },
+      ],
+    }),
   );
 
   return server;
@@ -524,6 +592,30 @@ async function main() {
     // Streamable HTTP transport via Hono
     const app = new Hono();
     const sessions = new Map<string, { transport: WebStandardStreamableHTTPServerTransport; server: McpServer }>();
+
+    // Structured access log — every request gets one JSON line on stderr
+    app.use("*", async (c, next) => {
+      const start = Date.now();
+      const ua = c.req.header("user-agent") || "";
+      const ref = c.req.header("referer") || "";
+      const fwd = c.req.header("fly-client-ip") || c.req.header("x-forwarded-for") || "";
+      const region = c.req.header("fly-region") || "";
+      const mcpSession = c.req.header("mcp-session-id") || "";
+      await next();
+      const entry = {
+        t: new Date().toISOString(),
+        m: c.req.method,
+        p: c.req.path,
+        s: c.res.status,
+        ms: Date.now() - start,
+        ua,
+        ref,
+        ip: fwd,
+        reg: region,
+        sid: mcpSession,
+      };
+      console.error("ACCESS " + JSON.stringify(entry));
+    });
 
     app.all("/mcp", async (c) => {
       const sessionId = c.req.header("mcp-session-id");
@@ -577,6 +669,54 @@ async function main() {
       }
 
       return new Response("Method not allowed", { status: 405 });
+    });
+
+    // Static server card for Smithery and other discovery layers
+    app.get("/.well-known/mcp/server-card.json", (c) => {
+      return c.json({
+        serverInfo: {
+          name: "intelligence",
+          title: "Good Meta Intelligence",
+          description: "Agent payments ecosystem intelligence. Scans GitHub, Hacker News, and npm for activity across AP2, ACP, x402, MPP, and UCP.",
+          version: "0.1.5",
+          websiteUrl: "https://intel.goodmeta.co",
+          icons: [
+            { src: "https://goodmeta.co/images/gm-logo-1024.png", mimeType: "image/png", sizes: ["1024x1024"] },
+          ],
+        },
+        capabilities: {
+          tools: { listChanged: false },
+          prompts: { listChanged: false },
+          resources: { listChanged: false, subscribe: false },
+        },
+        authentication: {
+          required: false,
+          schemes: ["x402", "mpp"],
+          notes: "scan_opportunities requires payment ($0.01 USDC via x402 on Base, or MPP Tempo USDC). Other tools are free. Authentication is per-request via the payment protocols, not session-level.",
+        },
+        configSchema: {
+          type: "object",
+          description: "Optional configuration. Remote server uses internal credentials; these are only required when self-hosting via the npm package.",
+          properties: {
+            GITHUB_PAT: {
+              type: "string",
+              description: "GitHub Personal Access Token. Required when self-hosting.",
+              format: "password",
+            },
+            ANTHROPIC_API_KEY: {
+              type: "string",
+              description: "Anthropic API key for signal classification. Required when self-hosting.",
+              format: "password",
+            },
+          },
+          required: [],
+        },
+        contact: {
+          repository: "https://github.com/goodmeta/intelligence-mcp",
+          homepage: "https://intel.goodmeta.co",
+          email: "eric@goodmeta.co",
+        },
+      });
     });
 
     app.get("/health", (c) => c.json({ ok: true, mode: "http", x402: !!X402_PAY_TO }));

@@ -1,6 +1,7 @@
 {
   "name": "@goodmeta/intelligence-mcp",
-  "version": "0.1.1",
+  "version": "0.1.5",
+  "mcpName": "io.github.goodmeta/intelligence-mcp",
   "description": "MCP server for agent payments ecosystem intelligence. Pay per query via x402.",
   "type": "module",
   "bin": {

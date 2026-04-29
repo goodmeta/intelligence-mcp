@@ -1,0 +1,42 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.goodmeta/intelligence-mcp",
+  "description": "Agent payments ecosystem intelligence. Scans GitHub/HN/npm across AP2, ACP, x402, MPP, UCP.",
+  "repository": {
+    "url": "https://github.com/goodmeta/intelligence-mcp",
+    "source": "github"
+  },
+  "version": "0.1.4",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@goodmeta/intelligence-mcp",
+      "version": "0.1.4",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GITHUB_PAT",
+          "description": "GitHub Personal Access Token for scanning repos and issues.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "description": "Anthropic API key for classifying and scoring signals.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://intel.goodmeta.co/mcp"
+    }
+  ]
+}
