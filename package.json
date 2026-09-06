@@ -1,6 +1,6 @@
 {
   "name": "@goodmeta/intelligence-mcp",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "mcpName": "io.github.goodmeta/intelligence-mcp",
   "description": "MCP server for agent payments ecosystem intelligence. Pay per query via x402.",
   "type": "module",
@@ -26,7 +26,7 @@
     "payment-verification"
   ],
   "author": "Eric Tsang <eric@goodmeta.co>",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
     "@hono/node-server": "1.19.17",
     "@modelcontextprotocol/sdk": "1.29.0",
