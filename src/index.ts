@@ -378,6 +378,22 @@ async function initPayments(): Promise<PaymentConfig> {
   return { paidScan, mppPayment, paymentMethods };
 }
 
+/**
+ * The rails the 402 challenge actually offers, which is NOT the same as the
+ * rails that are configured.
+ *
+ * When both are configured, x402 is the primary wrapper and MPP never appears
+ * in the challenge's accepts array (see the both-configured branch in
+ * createServer). Advertising the configured list promised agents an MPP rail
+ * they could never use, in both the server card and the tool description —
+ * issue #2. Everything user-facing reads from here instead.
+ */
+function offeredPaymentMethods(payments: PaymentConfig): { label: string; scheme: string }[] {
+  if (payments.paidScan) return [{ label: "x402 (USDC on Base)", scheme: "x402" }];
+  if (payments.mppPayment) return [{ label: "MPP (Tempo USDC)", scheme: "mpp" }];
+  return [];
+}
+
 // ---------------------------------------------------------------------------
 // MCP Server Factory — creates a new instance per session
 // ---------------------------------------------------------------------------
@@ -394,7 +410,8 @@ function createServer(payments: PaymentConfig): McpServer {
     ],
   });
 
-  const { paidScan, mppPayment, paymentMethods } = payments;
+  const { paidScan, mppPayment } = payments;
+  const offered = offeredPaymentMethods(payments);
 
   // Tool: scan_opportunities (paid if x402 configured, free otherwise)
   const scanHandler = async (args: { days: number; min_score: number }) => {
@@ -434,8 +451,8 @@ function createServer(payments: PaymentConfig): McpServer {
     };
   };
 
-  const payDesc = paymentMethods.length
-    ? `Costs ${SCAN_PRICE} USDC. Accepts: ${paymentMethods.join(" or ")}.`
+  const payDesc = offered.length
+    ? `Costs ${SCAN_PRICE} USDC. Accepts: ${offered.map((m) => m.label).join(" or ")}.`
     : "";
 
   // Build the scan handler callback based on payment configuration
@@ -459,7 +476,7 @@ function createServer(payments: PaymentConfig): McpServer {
     "scan_opportunities",
     {
       title: "Scan Agent Payments Ecosystem",
-      description: paymentMethods.length
+      description: offered.length
         ? `Scan GitHub, Hacker News, and npm for new repos, packages, and discussions in the agent payments ecosystem (AP2, ACP, x402, MPP, UCP). Returns AI-classified and scored opportunities with recommended actions. Use when the user asks about recent activity, new developments, or opportunities in agent payments ('what's new in agent payments?', 'any new x402 repos?', 'scan for opportunities'). Use get_protocol_info instead for static protocol details, or compare_protocols for side-by-side comparison. ${payDesc}`
         : "Scan GitHub, Hacker News, and npm for new repos, packages, and discussions in the agent payments ecosystem (AP2, ACP, x402, MPP, UCP). Returns AI-classified and scored opportunities with recommended actions. Use when the user asks about recent activity, new developments, or opportunities in agent payments ('what's new in agent payments?', 'any new x402 repos?', 'scan for opportunities'). Use get_protocol_info instead for static protocol details, or compare_protocols for side-by-side comparison.",
       inputSchema: {
@@ -587,6 +604,7 @@ Full comparison: https://github.com/goodmeta/agent-payments-landscape`;
 
 async function main() {
   const payments = await initPayments();
+  const offered = offeredPaymentMethods(payments);
 
   if (isHttpMode) {
     // Streamable HTTP transport via Hono
@@ -691,8 +709,10 @@ async function main() {
         },
         authentication: {
           required: false,
-          schemes: ["x402", "mpp"],
-          notes: "scan_opportunities requires payment ($0.01 USDC via x402 on Base, or MPP Tempo USDC). Other tools are free. Authentication is per-request via the payment protocols, not session-level.",
+          schemes: offered.map((m) => m.scheme),
+          notes: offered.length
+            ? `scan_opportunities requires payment (${SCAN_PRICE} USDC via ${offered.map((m) => m.label).join(" or ")}). Other tools are free. Authentication is per-request via the payment protocol, not session-level.`
+            : "All tools are free; no payment is required.",
         },
         configSchema: {
           type: "object",
